@@ -13,8 +13,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
+      - name: Install jq & yq
+        run: sudo apt-get install -y jq yq
 
       # ---------------------------
       # ZYPAK VERSION CHECK
@@ -62,16 +62,75 @@ jobs:
           echo "current=$CUR" >> $GITHUB_OUTPUT
 
       # ---------------------------
-      # CREATE PR IF DIFFERENT
+      # UPDATE MANIFEST IF NEEDED
+      # ---------------------------
+      - name: Update manifest if versions differ
+        run: |
+          CHANGED=false
+          
+          # Update Zypak tag if different
+          if [ "${{ steps.zypak.outputs.latest }}" != "${{ steps.zypak_local.outputs.current }}" ]; then
+            yq -y -i '(.modules[] | select(.name=="zypak") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.zypak.outputs.latest }}"'"' com.Ledger.LedgerWallet.yml
+            echo "Updated Zypak to ${{ steps.zypak.outputs.latest }}"
+            CHANGED=true
+          fi
+          
+          # Update Ledger Live tag if different
+          if [ "${{ steps.ledger.outputs.latest }}" != "${{ steps.ledger_local.outputs.current }}" ]; then
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.ledger.outputs.latest }}"'"' com.Ledger.LedgerWallet.yml
+            echo "Updated Ledger Live to ${{ steps.ledger.outputs.latest }}"
+            CHANGED=true
+          fi
+          
+          # Update pnpm if different
+          if [ "${{ steps.pnpm.outputs.latest }}" != "${{ steps.pnpm_local.outputs.current }}" ]; then
+            NEW_URL="https://github.com/pnpm/pnpm/releases/download/${{ steps.pnpm.outputs.latest }}/pnpm-linux-x64"
+            # Download new binary to compute sha256
+            curl -L -o pnpm-${{ steps.pnpm.outputs.latest }} "$NEW_URL"
+            SHA256=$(sha256sum pnpm-${{ steps.pnpm.outputs.latest }} | awk '{print $1}')
+            rm pnpm-${{ steps.pnpm.outputs.latest }}
+            
+            # Update URL (specific to pnpm path)
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .url ) = "'"$NEW_URL"'"' com.Ledger.LedgerWallet.yml
+            
+            # Update sha256 (after dest-filename: pnpm)
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .sha256 ) = "'"$SHA256"'"' com.Ledger.LedgerWallet.yml
+            
+            echo "Updated pnpm to ${{ steps.pnpm.outputs.latest }} with sha256 $SHA256"
+            CHANGED=true
+          fi
+          
+          # Check if any changes were made
+          if [ "$CHANGED" = false ] || ! git diff --quiet com.Ledger.LedgerWallet.yml; then
+            echo "No updates needed or changes applied"
+            exit 0
+          fi
+          
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add com.Ledger.LedgerWallet.yml
+          git commit -m "ci(update): Update dependencies to latest versions"
+        if: |
+          steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||
+          steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current ||
+          steps.ledger.outputs.latest != steps.ledger_local.outputs.current
+  
+      # ---------------------------
+      # CREATE PR IF CHANGES MADE
       # ---------------------------
       - name: Create Pull Request if needed
         uses: peter-evans/create-pull-request@v6
         with:
           title: "Update dependencies"
           branch: "auto/update-deps"
-          commit-message: "ci(update): Binaries update"
+          commit-message: "ci(update): Update dependencies to latest versions"
           body: |
             Automatic dependency update.
+            
+            Changes:
+            ${{ steps.zypak.outputs.latest != steps.zypak_local.outputs.current && format('- Zypak: {0} -> {1}', steps.zypak_local.outputs.current, steps.zypak.outputs.latest) || '' }}
+            ${{ steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current && format('- pnpm: {0} -> {1}', steps.pnpm_local.outputs.current, steps.pnpm.outputs.latest) || '' }}
+            ${{ steps.ledger.outputs.latest != steps.ledger_local.outputs.current && format('- Ledger Live: {0} -> {1}', steps.ledger_local.outputs.current, steps.ledger.outputs.latest) || '' }}
           labels: update
           token: ${{ secrets.GITHUB_TOKEN }}
         if: |
