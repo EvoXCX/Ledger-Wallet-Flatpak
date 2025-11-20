@@ -5,7 +5,15 @@ on:
     branches:
       - main
     paths:
-      - com.Ledger.LedgerWallet.yml
+      - com.ledger.ledgerwallet.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: flatpak-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -13,45 +21,62 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          manifest-path: com.Ledger.LedgerWallet.yml
+          manifest-path: com.ledger.ledgerwallet.yml
           bundle: Ledger-Wallet.flatpak
           cache-key: flatpak-builder-${{ github.sha }}
 
       # ---------------------------
       # Compute release tag
       # ---------------------------
-      - name: Read Ledger version
+      - name: Read Ledger version from manifest
         id: ledgerv
         run: |
-          VER=$(grep @ledgerhq/live-desktop@ com.Ledger.LedgerWallet.yml | awk -F "'" '{ print $2 }' | awk -F @ '{ print $NF }')
-          echo "version=$VER" >> $GITHUB_OUTPUT
+          # Extrait 2.133.0 depuis: tag: '@ledgerhq/live-desktop@2.133.0'
+          VER=$(grep "@ledgerhq/live-desktop@" -m1 com.ledger.ledgerwallet.yml | awk -F"'" '{print $2}' | awk -F"@" '{print $NF}')
+          if [ -z "$VER" ]; then
+            echo "Impossible de déterminer la version depuis com.ledger.ledgerwallet.yml"
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Generate unique tag
         id: gentag
         run: |
+          git fetch --tags --force
           BASE="${{ steps.ledgerv.outputs.version }}"
           TAG="$BASE"
           i=1
-          while git rev-parse "$TAG" >/dev/null 2>&1; do
-            TAG="$BASE-$i"
+          # Vérifie l'existence d'un tag identique et suffixe -1, -2, ...
+          while git show-ref --tags --verify --quiet "refs/tags/$TAG"; do
+            TAG="${BASE}-${i}"
             i=$((i+1))
           done
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       # ---------------------------
-      # CREATE RELEASE
+      # Attach bundle to GitHub Release
       # ---------------------------
-      - name: Create release
+      - name: Generate checksum
+        run: |
+          sha256sum "Ledger-Wallet.flatpak" | tee "Ledger-Wallet.flatpak.sha256"
+
+      - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.gentag.outputs.tag }}
           name: "Ledger Wallet - ${{ steps.gentag.outputs.tag }}"
-          files: Ledger-Wallet.flatpak
+          files: |
+            Ledger-Wallet.flatpak
+            Ledger-Wallet.flatpak.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
