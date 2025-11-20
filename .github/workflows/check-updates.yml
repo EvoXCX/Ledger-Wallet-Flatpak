@@ -1,0 +1,80 @@
+---
+name: Check Updates
+on:
+  schedule:
+    - cron: "0 0 * * *"   # Everyday at 00:00
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      # ---------------------------
+      # ZYPAK VERSION CHECK
+      # ---------------------------
+      - name: Get latest Zypak tag
+        id: zypak
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/refi64/zypak/tags | jq -r '.[0].name')
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Extract current Zypak version
+        id: zypak_local
+        run: |
+          CUR=$(grep -b2 zypak com.Ledger.LedgerWallet.yml | grep tag | awk -F "'" '{ print $2 }')
+          echo "current=$CUR" >> $GITHUB_OUTPUT
+
+      # ---------------------------
+      # PNPM VERSION CHECK
+      # ---------------------------
+      - name: Get latest pnpm version
+        id: pnpm
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/pnpm/pnpm/releases/latest | jq -r '.tag_name')
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Extract current pnpm version
+        id: pnpm_local
+        run: |
+          CUR=$(grep url com.Ledger.LedgerWallet.yml | grep pnpm | awk -F / '{ print $8 }')
+          echo "current=$CUR" >> $GITHUB_OUTPUT
+
+      # ---------------------------
+      # LEDGER LIVE VERSION CHECK
+      # ---------------------------
+      - name: Get latest Ledger Live tag
+        id: ledger
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/LedgerHQ/ledger-live/releases | jq -r '.[].tag_name' | grep "@ledgerhq/live-desktop@" | head -n 1)
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+
+      - name: Extract current Ledger version
+        id: ledger_local
+        run: |
+          CUR=$(grep @ledgerhq/live-desktop@ com.Ledger.LedgerWallet.yml | awk -F "'" '{ print $2 }')
+          echo "current=$CUR" >> $GITHUB_OUTPUT
+
+      # ---------------------------
+      # CREATE PR IF DIFFERENT
+      # ---------------------------
+      - name: Create Pull Request if needed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Update dependencies"
+          branch: "auto/update-deps"
+          commit-message: "ci(update): Binaries update"
+          body: |
+            Automatic dependency update.
+          labels: update
+          token: ${{ secrets.GITHUB_TOKEN }}
+        if: |
+          steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||
+          steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current ||
+          steps.ledger.outputs.latest != steps.ledger_local.outputs.current

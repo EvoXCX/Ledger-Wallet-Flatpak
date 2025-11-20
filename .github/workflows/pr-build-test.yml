@@ -1,0 +1,29 @@
+---
+name: Build & Test Flatpak (PR)
+on:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flatpak environment
+        uses: flatpak/flatpak-github-actions/setup-flatpak@v6
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/build@v6
+        with:
+          manifest-path: com.Ledger.LedgerWallet.yml
+          bundle: Ledger-Wallet.flatpak
+
+      - name: Install RobotFramework
+        run: |
+          pip install robotframework
+          pip install robotframework-flatpak
+
+      - name: Run Robot tests
+        run: robot tests/
