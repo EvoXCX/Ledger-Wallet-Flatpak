@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Ledger Wallet
+Exec=/app/bin/ledger-wallet-wrapper.sh %U
+Terminal=false
+Type=Application
+Icon=com.Ledger.LedgerWallet
+StartupWMClass=Ledger Wallet
+Version=2.133.0
+Comment=Ledger Wallet - Desktop
+MimeType=x-scheme-handler/ledgerlive;
+Categories=Finance;
