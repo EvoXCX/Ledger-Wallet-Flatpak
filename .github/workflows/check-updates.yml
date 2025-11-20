@@ -132,7 +132,7 @@ jobs:
             ${{ steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current && format('- pnpm: {0} -> {1}', steps.pnpm_local.outputs.current, steps.pnpm.outputs.latest) || '' }}
             ${{ steps.ledger.outputs.latest != steps.ledger_local.outputs.current && format('- Ledger Live: {0} -> {1}', steps.ledger_local.outputs.current, steps.ledger.outputs.latest) || '' }}
           labels: update
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TOKEN }}
         if: |
           steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||
           steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current ||
