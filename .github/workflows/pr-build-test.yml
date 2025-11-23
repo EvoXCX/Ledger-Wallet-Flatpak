@@ -2,6 +2,8 @@
 name: Build and Test Flatpak
 on:
   push:
+    branches-ignore:
+      - main
     paths:
       - com.ledger.ledgerwallet.*
       - ledger-wrapper-launcher.sh
