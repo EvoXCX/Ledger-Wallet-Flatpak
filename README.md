@@ -1,3 +1,3 @@
 # Unofficial - Ledger Wallet - Desktop (Flatpak)
-[![Flatpak Build](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/build-flatpak.yml/badge.svg)](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/build-flatpak.yml)
-[![Flatpak Test](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/build-flatpak.yml/badge.svg)](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/test-flatpak.yml)
+[![Flatpak Release](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/release.yml/badge.svg)](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/release.yml)
+[![Flatpak Test Build](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/pr-build-test.yml/badge.svg)](https://github.com/EvoXCX/Ledger-Wallet-Flatpak/actions/workflows/pr-build-test.yml)

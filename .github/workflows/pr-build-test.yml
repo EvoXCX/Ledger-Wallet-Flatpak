@@ -2,6 +2,8 @@
 name: Build and Test Flatpak
 on:
   push:
+    branches-ignore:
+      - main
     paths:
       - com.ledger.ledgerwallet.*
       - ledger-wrapper-launcher.sh
@@ -54,10 +56,6 @@ jobs:
 
       - name: Build Flatpak App
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        env:
-          PNPM_STORE_DIR: /var/cache/pnpm/store
-          PNPM_CACHE_DIR: /var/cache/pnpm
-          npm_config_cache: /var/cache/pnpm
         with:
           manifest-path: com.ledger.ledgerwallet.yml
           bundle: Ledger-Wallet.flatpak

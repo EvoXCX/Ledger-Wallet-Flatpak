@@ -1,5 +1,5 @@
----
 name: Release Flatpak
+
 on:
   push:
     branches:
@@ -21,62 +21,103 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
+
     steps:
+      # ------------------------------
+      # Checkout
+      # ------------------------------
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Fix Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # ------------------------------
+      # Parallel build
+      # ------------------------------
+      - name: Detect CPU count
+        id: cpu
+        run: echo "cpus=$(nproc)" >> $GITHUB_OUTPUT
+
+      - name: Enable flatpak-builder parallel jobs
+        run: echo "FLATPAK_BUILDER_N_JOBS=${{ steps.cpu.outputs.cpus }}" >> $GITHUB_ENV
+
+      # ------------------------------
+      # Install yq
+      # ------------------------------
+      - name: Install yq
+        run: |
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+            -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      # ------------------------------
+      # Build Flatpak
+      # ------------------------------
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           manifest-path: com.ledger.ledgerwallet.yml
           bundle: Ledger-Wallet.flatpak
-          cache-key: flatpak-builder-${{ github.sha }}
+          cache-key: flatpak-release-${{ github.sha }}
 
-      # ---------------------------
-      # Compute release tag
-      # ---------------------------
-      - name: Read Ledger version from manifest
+      # ------------------------------
+      # Extract and convert Ledger version
+      # ------------------------------
+      - name: Read and convert Ledger version
         id: ledgerv
         run: |
-          # Extrait 2.133.0 depuis: tag: '@ledgerhq/live-desktop@2.133.0'
-          VER=$(grep "@ledgerhq/live-desktop@" -m1 com.ledger.ledgerwallet.yml | awk -F"'" '{print $2}' | awk -F"@" '{print $NF}')
-          if [ -z "$VER" ]; then
-            echo "Impossible de déterminer la version depuis com.ledger.ledgerwallet.yml"
+          RAW=$(yq '.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag' com.ledger.ledgerwallet.yml)
+
+          if [ -z "$RAW" ]; then
+            echo "Error: Unable to extract Ledger version" >&2
             exit 1
           fi
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Generate unique tag
-        id: gentag
-        run: |
-          git fetch --tags --force
-          BASE="${{ steps.ledgerv.outputs.version }}"
-          TAG="$BASE"
-          i=1
-          # Vérifie l'existence d'un tag identique et suffixe -1, -2, ...
-          while git show-ref --tags --verify --quiet "refs/tags/$TAG"; do
-            TAG="${BASE}-${i}"
-            i=$((i+1))
-          done
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # Extract X.Y.Z from @ledgerhq/live-desktop@X.Y.Z
+          VERSION="${RAW##*@}"
 
-      # ---------------------------
-      # Attach bundle to GitHub Release
-      # ---------------------------
+          # Convert to GitHub tag vX.Y.Z
+          GIT_TAG="v${VERSION}"
+
+          echo "raw=$RAW"
+          echo "version=$VERSION"
+          echo "tag=$GIT_TAG" >> $GITHUB_OUTPUT
+
+          echo "Final Git tag: $GIT_TAG"
+
+      # ------------------------------
+      # Generate checksum
+      # ------------------------------
       - name: Generate checksum
+        id: sha256sum
         run: |
-          sha256sum "Ledger-Wallet.flatpak" | tee "Ledger-Wallet.flatpak.sha256"
+          sha256sum Ledger-Wallet.flatpak | tee Ledger-Wallet.flatpak.sha256
+          echo "sha256_sum=$(cut -d ' ' -f1 Ledger-Wallet.flatpak.sha256)" >> $GITHUB_OUTPUT
 
+      # ------------------------------
+      # Release
+      # ------------------------------
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.gentag.outputs.tag }}
-          name: "Ledger Wallet - ${{ steps.gentag.outputs.tag }}"
+          tag_name: ${{ steps.ledgerv.outputs.tag }}
+          name: "Ledger Wallet – ${{ steps.ledgerv.outputs.tag }}"
+          body: |
+            ## Ledger Wallet release
+
+            **Version:** ${{ steps.ledgerv.outputs.tag }}
+
+            **Checksum (SHA256):**
+            ```
+            ${{ steps.sha256sum.outputs.sha256_sum }}
+            ```
+
+            *Built automatically from manifest update.*
           files: |
             Ledger-Wallet.flatpak
             Ledger-Wallet.flatpak.sha256
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN }}
