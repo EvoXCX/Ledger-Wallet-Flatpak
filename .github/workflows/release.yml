@@ -40,10 +40,9 @@ jobs:
       - name: Read Ledger version from manifest
         id: ledgerv
         run: |
-          # Extrait 2.133.0 depuis: tag: '@ledgerhq/live-desktop@2.133.0'
           VER=$(grep "@ledgerhq/live-desktop@" -m1 com.ledger.ledgerwallet.yml | awk -F"'" '{print $2}' | awk -F"@" '{print $NF}')
           if [ -z "$VER" ]; then
-            echo "Impossible de déterminer la version depuis com.ledger.ledgerwallet.yml"
+            echo "Impossible to get the version from com.ledger.ledgerwallet.yml"
             exit 1
           fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"

@@ -1,8 +1,7 @@
----
 name: Check Updates
 on:
   schedule:
-    - cron: "0 0 * * *"   # Everyday at 00:00
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,129 +12,151 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install jq & yq
-        run: sudo apt-get install -y jq yq xmlstarlet
-
-      # ---------------------------
-      # ZYPAK VERSION CHECK
-      # ---------------------------
-      - name: Get latest Zypak tag
-        id: zypak
+      - name: Install tools
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/refi64/zypak/tags | jq -r '.[0].name')
-          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          sudo apt-get update
+          sudo apt-get install -y jq xmlstarlet
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+            -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
 
-      - name: Extract current Zypak version
-        id: zypak_local
+      # ---------------------------
+      # Extract CURRENT versions using yq
+      # ---------------------------
+      - name: Extract current versions from manifest
+        id: local
         run: |
-          CUR=$(grep -b2 zypak com.ledger.ledgerwallet.yml | grep tag | awk -F "'" '{ print $2 }')
-          echo "current=$CUR" >> $GITHUB_OUTPUT
+          CUR_ZYPAK=$(yq '.modules[] | select(.name=="zypak") | .sources[] | select(.type=="git") | .tag' com.ledger.ledgerwallet.yml)
+          CUR_PNPM=$(yq '.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .url' com.ledger.ledgerwallet.yml | awk -F '/' '{print $8}')
+          CUR_LL=$(yq '.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag' com.ledger.ledgerwallet.yml)
+
+          echo "zypak=$CUR_ZYPAK" >> $GITHUB_OUTPUT
+          echo "pnpm=$CUR_PNPM" >> $GITHUB_OUTPUT
+          echo "ledger=$CUR_LL" >> $GITHUB_OUTPUT
 
       # ---------------------------
-      # PNPM VERSION CHECK
+      # Get LATEST versions online
       # ---------------------------
-      - name: Get latest pnpm version
-        id: pnpm
+      - name: Get latest versions
+        id: remote
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/pnpm/pnpm/releases/latest | jq -r '.tag_name')
-          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          ZYPAK=$(curl -s https://api.github.com/repos/refi64/zypak/tags | jq -r '.[0].name')
+          PNPM=$(curl -s https://api.github.com/repos/pnpm/pnpm/releases/latest | jq -r '.tag_name')
+          LEDGER=$(curl -s https://api.github.com/repos/LedgerHQ/ledger-live/releases | \
+            jq -r '.[].tag_name' | grep "@ledgerhq/live-desktop@" | head -n 1)
 
-      - name: Extract current pnpm version
-        id: pnpm_local
-        run: |
-          CUR=$(grep url com.ledger.ledgerwallet.yml | grep pnpm | awk -F / '{ print $8 }')
-          echo "current=$CUR" >> $GITHUB_OUTPUT
-
-      # ---------------------------
-      # LEDGER LIVE VERSION CHECK
-      # ---------------------------
-      - name: Get latest Ledger Live tag
-        id: ledger
-        run: |
-          LATEST=$(curl -s https://api.github.com/repos/LedgerHQ/ledger-live/releases | jq -r '.[].tag_name' | grep "@ledgerhq/live-desktop@" | head -n 1)
-          echo "latest=$LATEST" >> $GITHUB_OUTPUT
-
-      - name: Extract current Ledger version
-        id: ledger_local
-        run: |
-          CUR=$(grep @ledgerhq/live-desktop@ com.ledger.ledgerwallet.yml | awk -F "'" '{ print $2 }')
-          echo "current=$CUR" >> $GITHUB_OUTPUT
+          echo "zypak=$ZYPAK" >> $GITHUB_OUTPUT
+          echo "pnpm=$PNPM" >> $GITHUB_OUTPUT
+          echo "ledger=$LEDGER" >> $GITHUB_OUTPUT
 
       # ---------------------------
-      # UPDATE MANIFEST IF NEEDED
+      # UPDATE MANIFEST
       # ---------------------------
-      - name: Update manifest if versions differ
+      - name: Apply updates
+        id: update
         run: |
           CHANGED=false
-          
-          # Update Zypak tag if different
-          if [ "${{ steps.zypak.outputs.latest }}" != "${{ steps.zypak_local.outputs.current }}" ]; then
-            yq -y -i '(.modules[] | select(.name=="zypak") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.zypak.outputs.latest }}"'"' com.ledger.ledgerwallet.yml
-            echo "Updated Zypak to ${{ steps.zypak.outputs.latest }}"
+
+          # Zypak
+          if [ "${{ steps.local.outputs.zypak }}" != "${{ steps.remote.outputs.zypak }}" ]; then
+            yq -i \
+              "(.modules[] | select(.name==\"zypak\") | .sources[] | select(.type==\"git\") | .tag) = \"${{ steps.remote.outputs.zypak }}\"" \
+              com.ledger.ledgerwallet.yml
             CHANGED=true
+            echo "Updated Zypak"
           fi
-          
-          # Update Ledger Live tag if different
-          if [ "${{ steps.ledger.outputs.latest }}" != "${{ steps.ledger_local.outputs.current }}" ]; then
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.ledger.outputs.latest }}"'"' com.ledger.ledgerwallet.yml
-            xmlstarlet ed -L -u '/component/releases/release[1]/@version' -v "${{ steps.ledger.outputs.latest }}" com.ledger.ledgerwallet.metainfo.xml
-            xmlstarlet ed -L -u '/component/releases/release[1]/@date' -v "$(date -u +%Y-%m-%d)" com.ledger.ledgerwallet.metainfo.xml
-            echo "Updated Ledger Live to ${{ steps.ledger.outputs.latest }}"
+
+          # Ledger Live
+          if [ "${{ steps.local.outputs.ledger }}" != "${{ steps.remote.outputs.ledger }}" ]; then
+            yq -i \
+              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.type==\"git\") | .tag) = \"${{ steps.remote.outputs.ledger }}\"" \
+              com.ledger.ledgerwallet.yml
+
+            xmlstarlet ed -L \
+              -u '/component/releases/release[1]/@version' \
+              -v "${{ steps.remote.outputs.ledger }}" \
+              com.ledger.ledgerwallet.metainfo.xml
+
+            xmlstarlet ed -L \
+              -u '/component/releases/release[1]/@date' \
+              -v "$(date -u +%Y-%m-%d)" \
+              com.ledger.ledgerwallet.metainfo.xml
+
             CHANGED=true
+            echo "Updated Ledger Live"
           fi
-          
-          # Update pnpm if different
-          if [ "${{ steps.pnpm.outputs.latest }}" != "${{ steps.pnpm_local.outputs.current }}" ]; then
-            NEW_URL="https://github.com/pnpm/pnpm/releases/download/${{ steps.pnpm.outputs.latest }}/pnpm-linux-x64"
-            # Download new binary to compute sha256
-            curl -L -o pnpm-${{ steps.pnpm.outputs.latest }} "$NEW_URL"
-            SHA256=$(sha256sum pnpm-${{ steps.pnpm.outputs.latest }} | awk '{print $1}')
-            rm pnpm-${{ steps.pnpm.outputs.latest }}
-            
-            # Update URL (specific to pnpm path)
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .url ) = "'"$NEW_URL"'"' com.ledger.ledgerwallet.yml
-            
-            # Update sha256 (after dest-filename: pnpm)
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .sha256 ) = "'"$SHA256"'"' com.ledger.ledgerwallet.yml
-            
-            echo "Updated pnpm to ${{ steps.pnpm.outputs.latest }} with sha256 $SHA256"
+
+          # PNPM
+          if [ "${{ steps.local.outputs.pnpm }}" != "${{ steps.remote.outputs.pnpm }}" ]; then
+            NEW_URL="https://github.com/pnpm/pnpm/releases/download/${{ steps.remote.outputs.pnpm }}/pnpm-linux-x64"
+            curl -L -o pnpmdl "$NEW_URL"
+            SHA256=$(sha256sum pnpmdl | awk '{print $1}')
+            rm pnpmdl
+
+            yq -i \
+              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.type==\"file\") | .url) = \"$NEW_URL\"" \
+              com.ledger.ledgerwallet.yml
+
+            yq -i \
+              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.type==\"file\") | .sha256) = \"$SHA256\"" \
+              com.ledger.ledgerwallet.yml
+
             CHANGED=true
+            echo "Updated pnpm"
           fi
-          
-          # Check if any changes were made
-          if [ "$CHANGED" = false ] || ! git diff --quiet com.ledger.ledgerwallet.yml; then
-            echo "No updates needed or changes applied"
+
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
+          if [ "$CHANGED" = false ]; then
+            echo "No updates needed"
             exit 0
           fi
-          
+
+          # Commit
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add com.ledger.ledgerwallet.yml
-          git commit -m "ci(update): Update dependencies to latest versions"
-        if: |
-          steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||
-          steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current ||
-          steps.ledger.outputs.latest != steps.ledger_local.outputs.current
-  
+          git add com.ledger.ledgerwallet.yml com.ledger.ledgerwallet.metainfo.xml
+          git commit -m "ci(update): Update dependencies"
+
       # ---------------------------
-      # CREATE PR IF CHANGES MADE
+      # BUILD DYNAMIC PR BODY (only changed deps)
       # ---------------------------
-      - name: Create Pull Request if needed
+      - name: Build PR body
+        id: pr_body
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          BODY=""
+
+          if [ "${{ steps.local.outputs.zypak }}" != "${{ steps.remote.outputs.zypak }}" ]; then
+            BODY="${BODY}- Zypak: ${{ steps.local.outputs.zypak }} → ${{ steps.remote.outputs.zypak }}"$'\n'
+          fi
+
+          if [ "${{ steps.local.outputs.pnpm }}" != "${{ steps.remote.outputs.pnpm }}" ]; then
+            BODY="${BODY}- pnpm: ${{ steps.local.outputs.pnpm }} → ${{ steps.remote.outputs.pnpm }}"$'\n'
+          fi
+
+          if [ "${{ steps.local.outputs.ledger }}" != "${{ steps.remote.outputs.ledger }}" ]; then
+            BODY="${BODY}- Ledger Live: ${{ steps.local.outputs.ledger }} → ${{ steps.remote.outputs.ledger }}"$'\n'
+          fi
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # ---------------------------
+      # CREATE PR
+      # ---------------------------
+      - name: Create pull request
+        if: steps.update.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           title: "Update dependencies"
           branch: "auto/update-deps"
-          commit-message: "ci(update): Update dependencies to latest versions"
+          commit-message: "ci(update): Update dependencies"
           body: |
-            Automatic dependency update.
-            
+            Automatic update.
+
             Changes:
-            ${{ steps.zypak.outputs.latest != steps.zypak_local.outputs.current && format('- Zypak: {0} -> {1}', steps.zypak_local.outputs.current, steps.zypak.outputs.latest) || '' }}
-            ${{ steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current && format('- pnpm: {0} -> {1}', steps.pnpm_local.outputs.current, steps.pnpm.outputs.latest) || '' }}
-            ${{ steps.ledger.outputs.latest != steps.ledger_local.outputs.current && format('- Ledger Live: {0} -> {1}', steps.ledger_local.outputs.current, steps.ledger.outputs.latest) || '' }}
+            ${{ steps.pr_body.outputs.body }}
           labels: update
           token: ${{ secrets.TOKEN }}
-        if: |
-          steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||
-          steps.pnpm.outputs.latest != steps.pnpm_local.outputs.current ||
-          steps.ledger.outputs.latest != steps.ledger_local.outputs.current
