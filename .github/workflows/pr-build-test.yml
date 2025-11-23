@@ -1,30 +1,136 @@
 ---
-name: Build & Test Flatpak (PR)
+name: Build and Test Flatpak
 on:
-  pull_request:
+  push:
+    paths:
+      - com.ledger.ledgerwallet.*
+      - ledger-wrapper-launcher.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: flatpak-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-test:
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
- 
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - name: Calculate manifest hash
+        id: manifest
+        run: echo "value=$(sha256sum com.ledger.ledgerwallet.yml | cut -d ' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          manifest-path: com.Ledger.LedgerWallet.yml
+          path: ~/.cache/ccache
+          key: ccache-${{ steps.manifest.outputs.value }}
+          restore-keys: ccache-
+
+      - name: Detect CPU count
+        id: cpu
+        run: echo "cpus=$(nproc)" >> $GITHUB_OUTPUT
+
+      - name: Enable flatpak-builder parallel jobs
+        run: echo "FLATPAK_BUILDER_N_JOBS=${{ steps.cpu.outputs.cpus }}" >> $GITHUB_ENV
+
+      - name: Enable ccache
+        run: |
+          mkdir -p ~/.cache/ccache
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> $GITHUB_ENV
+          echo "CC='ccache gcc'" >> $GITHUB_ENV
+          echo "CXX='ccache g++'" >> $GITHUB_ENV
+          echo "Using $(nproc) jobs for compilation"
+
+      - name: Build Flatpak App
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        env:
+          PNPM_STORE_DIR: /var/cache/pnpm/store
+          PNPM_CACHE_DIR: /var/cache/pnpm
+          npm_config_cache: /var/cache/pnpm
+        with:
+          manifest-path: com.ledger.ledgerwallet.yml
           bundle: Ledger-Wallet.flatpak
-          cache-key: flatpak-builder-${{ github.sha }}
+          cache-key: manual-cache-disabled
+          upload-artifact: false
+
+      - name: Upload flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallet-flatpak
+          path: Ledger-Wallet.flatpak
+          retention-days: 14
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Checkout (tests)
+        uses: actions/checkout@v4
+
+      - name: Download Flatpak bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: wallet-flatpak
+          path: .
+
+      - name: Install deps (X11)
+        run: |
+          sudo apt update
+          sudo apt install -y flatpak dbus-x11 python3-pip xvfb fluxbox xdg-desktop-portal xdg-desktop-portal-gtk x11-utils
+
+      - name: Configure flathub
+        run: sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Start DBus session
+        run: |
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
+
+      - name: Start Xvfb + Fluxbox
+        env:
+          DISPLAY: ":99"
+        run: |
+          rm -f /tmp/.X99-lock || true
+          Xvfb :99 -screen 0 1024x768x24 -nolisten tcp &
+          # Wait for Xvfb to be ready
+          for i in {1..20}; do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.2; done
+          fluxbox &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Install the Flatpak bundle (user)
+        run: flatpak install --user -y Ledger-Wallet.flatpak
 
       - name: Install RobotFramework
-        run: |
-          pip install robotframework
-          pip install robotframework-flatpak
+        run: pip3 install robotframework
 
-      - name: Run Robot tests
-        run: robot tests/
+      - name: Run X11 Robot tests
+        env:
+          DBUS_SESSION_BUS_ADDRESS: ${{ env.DBUS_SESSION_BUS_ADDRESS }}
+          DISPLAY: ":99"
+          ELECTRON_OZONE_PLATFORM_HINT: "x11"
+          ELECTRON_ENABLE_WAYLAND: "0"
+          GDK_BACKEND: "x11"
+        run: robot tests/install_launch_home.robot
+
+      - name: Upload X11 Robot results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot-reports-x11
+          path: |
+            output.xml
+            log.html
+            report.html
+          retention-days: 14

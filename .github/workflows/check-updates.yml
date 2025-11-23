@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install jq & yq
-        run: sudo apt-get install -y jq yq
+        run: sudo apt-get install -y jq yq xmlstarlet
 
       # ---------------------------
       # ZYPAK VERSION CHECK
@@ -28,7 +28,7 @@ jobs:
       - name: Extract current Zypak version
         id: zypak_local
         run: |
-          CUR=$(grep -b2 zypak com.Ledger.LedgerWallet.yml | grep tag | awk -F "'" '{ print $2 }')
+          CUR=$(grep -b2 zypak com.ledger.ledgerwallet.yml | grep tag | awk -F "'" '{ print $2 }')
           echo "current=$CUR" >> $GITHUB_OUTPUT
 
       # ---------------------------
@@ -43,7 +43,7 @@ jobs:
       - name: Extract current pnpm version
         id: pnpm_local
         run: |
-          CUR=$(grep url com.Ledger.LedgerWallet.yml | grep pnpm | awk -F / '{ print $8 }')
+          CUR=$(grep url com.ledger.ledgerwallet.yml | grep pnpm | awk -F / '{ print $8 }')
           echo "current=$CUR" >> $GITHUB_OUTPUT
 
       # ---------------------------
@@ -58,7 +58,7 @@ jobs:
       - name: Extract current Ledger version
         id: ledger_local
         run: |
-          CUR=$(grep @ledgerhq/live-desktop@ com.Ledger.LedgerWallet.yml | awk -F "'" '{ print $2 }')
+          CUR=$(grep @ledgerhq/live-desktop@ com.ledger.ledgerwallet.yml | awk -F "'" '{ print $2 }')
           echo "current=$CUR" >> $GITHUB_OUTPUT
 
       # ---------------------------
@@ -70,14 +70,16 @@ jobs:
           
           # Update Zypak tag if different
           if [ "${{ steps.zypak.outputs.latest }}" != "${{ steps.zypak_local.outputs.current }}" ]; then
-            yq -y -i '(.modules[] | select(.name=="zypak") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.zypak.outputs.latest }}"'"' com.Ledger.LedgerWallet.yml
+            yq -y -i '(.modules[] | select(.name=="zypak") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.zypak.outputs.latest }}"'"' com.ledger.ledgerwallet.yml
             echo "Updated Zypak to ${{ steps.zypak.outputs.latest }}"
             CHANGED=true
           fi
           
           # Update Ledger Live tag if different
           if [ "${{ steps.ledger.outputs.latest }}" != "${{ steps.ledger_local.outputs.current }}" ]; then
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.ledger.outputs.latest }}"'"' com.Ledger.LedgerWallet.yml
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="git") | .tag) = "'"${{ steps.ledger.outputs.latest }}"'"' com.ledger.ledgerwallet.yml
+            xmlstarlet ed -L -u '/component/releases/release[1]/@version' -v "${{ steps.ledger.outputs.latest }}" com.ledger.ledgerwallet.metainfo.xml
+            xmlstarlet ed -L -u '/component/releases/release[1]/@date' -v "$(date -u +%Y-%m-%d)" com.ledger.ledgerwallet.metainfo.xml
             echo "Updated Ledger Live to ${{ steps.ledger.outputs.latest }}"
             CHANGED=true
           fi
@@ -91,24 +93,24 @@ jobs:
             rm pnpm-${{ steps.pnpm.outputs.latest }}
             
             # Update URL (specific to pnpm path)
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .url ) = "'"$NEW_URL"'"' com.Ledger.LedgerWallet.yml
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .url ) = "'"$NEW_URL"'"' com.ledger.ledgerwallet.yml
             
             # Update sha256 (after dest-filename: pnpm)
-            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .sha256 ) = "'"$SHA256"'"' com.Ledger.LedgerWallet.yml
+            yq -y -i '(.modules[] | select(.name=="ledger-wallet") | .sources[] | select(.type=="file") | .sha256 ) = "'"$SHA256"'"' com.ledger.ledgerwallet.yml
             
             echo "Updated pnpm to ${{ steps.pnpm.outputs.latest }} with sha256 $SHA256"
             CHANGED=true
           fi
           
           # Check if any changes were made
-          if [ "$CHANGED" = false ] || ! git diff --quiet com.Ledger.LedgerWallet.yml; then
+          if [ "$CHANGED" = false ] || ! git diff --quiet com.ledger.ledgerwallet.yml; then
             echo "No updates needed or changes applied"
             exit 0
           fi
           
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add com.Ledger.LedgerWallet.yml
+          git add com.ledger.ledgerwallet.yml
           git commit -m "ci(update): Update dependencies to latest versions"
         if: |
           steps.zypak.outputs.latest != steps.zypak_local.outputs.current ||

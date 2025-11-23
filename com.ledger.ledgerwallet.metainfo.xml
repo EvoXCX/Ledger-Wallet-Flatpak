@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.ledger.ledgerwallet</id>
+  <name>Ledger Live</name>
+  <summary>Manage Ledger hardware wallets</summary>
+
+  <developer id="com.ledger">
+    <name>Ledger</name>
+  </developer>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>Ledger Live lets you manage your Ledger hardware wallet, install apps, and manage your crypto assets.</p>
+  </description>
+
+  <launchable type="desktop-id">com.ledger.ledgerwallet.desktop</launchable>
+  <provides>
+    <binary>ledger-live</binary>
+  </provides>
+
+  <url type="homepage">https://www.ledger.com/ledger-live</url>
+  <url type="bugtracker">https://github.com/LedgerHQ/ledger-live/issues</url>
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="2.133.0" date="2025-01-01"/>
+  </releases>
+</component>

@@ -1,4 +1,4 @@
-id: com.Ledger.LedgerWallet
+id: com.ledger.ledgerwallet
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
@@ -20,12 +20,12 @@ modules:
     sources:
       - type: git
         url: https://github.com/refi64/zypak
-        tag: v2025.9
+        tag: v2025.09
   - name: ledger-wallet
     buildsystem: simple
     sources:
       - type: git
-        url: https://github.com/LedgerHQ/ledger-live.git
+        url: https://github.com/ledgerHQ/ledger-live.git
         tag: '@ledgerhq/live-desktop@2.133.0'
       - type: file
         url: https://github.com/pnpm/pnpm/releases/download/v10.23.0/pnpm-linux-x64
@@ -34,20 +34,32 @@ modules:
       - type: file
         path: ledger-wallet-wrapper.sh
       - type: file
-        path: com.Ledger.LedgerWallet.png
+        path: com.ledger.ledgerwallet.png
       - type: file
-        path: com.Ledger.LedgerWallet.desktop
+        path: com.ledger.ledgerwallet.desktop
+      - type: file
+        path: com.ledger.ledgerwallet.metainfo.xml
     build-options:
-      append-path: /usr/lib/sdk/node20/bin:/run/build/ledger-live/bin
+      append-path: /usr/lib/sdk/node20/bin:/run/build/ledger-live/bin:/run/build/ledger-wallet/node_modules/.bin
+      build-packages:
+        - python3
+        - make
+        - gcc
+        - gcc-c++
+      env:
+        npm_config_nodedir: /usr/lib/sdk/node20
+        npm_config_node_gyp: /usr/lib/sdk/node20/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js
+        npm_config_python: /usr/bin/python3
       build-args:
         - --share=network
     build-commands:
       - install -Dm755 ledger-wallet-wrapper.sh /app/bin/ledger-wallet-wrapper.sh
-      - install -Dm444 com.Ledger.LedgerWallet.png /app/share/icons/hicolor/256x256/apps/com.Ledger.LedgerWallet.png
-      - install -Dm444 com.Ledger.LedgerWallet.desktop /app/share/applications/com.Ledger.LedgerWallet.desktop
-      - install -Dm755 pnpm /run/build/ledger-live/bin/pnpm
-      - pnpm install
-      - pnpm release:lld
+      - install -Dm444 com.ledger.ledgerwallet.png /app/share/icons/hicolor/256x256/apps/com.ledger.ledgerwallet.png
+      - install -Dm444 com.ledger.ledgerwallet.desktop /app/share/applications/com.ledger.ledgerwallet.desktop
+      - install -Dm444 com.ledger.ledgerwallet.metainfo.xml /app/share/metainfo/com.ledger.ledgerwallet.appdata.xml
+      - chmod 755 pnpm
+      - ./pnpm install
+      - ./pnpm release:lld
       - cp -r apps/ledger-live-desktop/dist/linux-unpacked/* /app/bin/
       - rm -f /app/bin/LICENSES.chromium.html
       - rm -f /app/bin/LICENSE.electron.txt
