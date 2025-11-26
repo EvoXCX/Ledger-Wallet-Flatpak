@@ -20,13 +20,13 @@ modules:
     sources:
       - type: git
         url: https://github.com/refi64/zypak
-        tag: 'v2025.07'
+        tag: 'v2025.09'
   - name: ledger-wallet
     buildsystem: simple
     sources:
       - type: git
         url: https://github.com/ledgerHQ/ledger-live.git
-        tag: '@ledgerhq/live-desktop@2.999.0'
+        tag: '@ledgerhq/live-desktop@2.133.0'
       - type: file
         url: https://github.com/pnpm/pnpm/releases/download/v10.23.0/pnpm-linux-x64
         dest-filename: pnpm
