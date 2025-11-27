@@ -94,11 +94,11 @@ jobs:
             rm pnpmdl
 
             yq -i \
-              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.type==\"file\") | .url) = \"$NEW_URL\"" \
+              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.only-pnpm == true) | .url) = \"$NEW_URL\"" \
               com.ledger.ledgerwallet.yml
 
             yq -i \
-              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.type==\"file\") | .sha256) = \"$SHA256\"" \
+              "(.modules[] | select(.name==\"ledger-wallet\") | .sources[] | select(.only-pnpm == true) | .sha256) = \"$SHA256\"" \
               com.ledger.ledgerwallet.yml
 
             CHANGED=true
