@@ -28,10 +28,10 @@ modules:
         url: https://github.com/ledgerHQ/ledger-live.git
         tag: '@ledgerhq/live-desktop@2.133.0'
       - type: file
-        url: https://github.com/pnpm/pnpm/releases/download/v10.23.0/pnpm-linux-x64
+        url: https://github.com/pnpm/pnpm/releases/download/v10.24.0/pnpm-linux-x64
         dest-filename: pnpm
         only-pnpm: true
-        sha256: 6e5f25fad67ba1b4fe1050c8992ced33ce8689245a834ddec149940a20c2be5c
+        sha256: 985824ae016db3c7bbd7b39dcb4e6f5740b11cce79f5c43d5e5e640768fd4806
       - type: file
         path: ledger-wallet-wrapper.sh
       - type: file
