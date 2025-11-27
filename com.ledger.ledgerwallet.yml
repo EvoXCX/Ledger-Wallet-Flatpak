@@ -30,6 +30,7 @@ modules:
       - type: file
         url: https://github.com/pnpm/pnpm/releases/download/v10.23.0/pnpm-linux-x64
         dest-filename: pnpm
+        only-pnpm: true
         sha256: 6e5f25fad67ba1b4fe1050c8992ced33ce8689245a834ddec149940a20c2be5c
       - type: file
         path: ledger-wallet-wrapper.sh

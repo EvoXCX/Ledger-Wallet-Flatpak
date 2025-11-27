@@ -54,7 +54,16 @@ jobs:
           chmod +x /usr/local/bin/yq
 
       # ------------------------------
-      # Build Flatpak
+      # Import GPG
+      # ------------------------------
+      - name: Import GPG key
+        run: |
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      # ------------------------------
+      # Build & Sign Flatpak
       # ------------------------------
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -62,6 +71,12 @@ jobs:
           manifest-path: com.ledger.ledgerwallet.yml
           bundle: Ledger-Wallet.flatpak
           cache-key: flatpak-release-${{ github.sha }}
+
+      - name: Sign Flatpak
+        run: |
+          flatpak build-sign \
+            --gpg-sign="${{ secrets.GPG_KEY_ID }}" \
+            Ledger-Wallet.flatpak
 
       # ------------------------------
       # Extract and convert Ledger version
